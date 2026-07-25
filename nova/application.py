@@ -448,7 +448,7 @@ class Handler(SimpleHTTPRequestHandler):
                         Path(filename).name,
                         content,
                         content_type,
-                        fields.get("mode", "demo"),
+                        "gemini",
                     ),
                 )
             if self.path == "/api/query":
