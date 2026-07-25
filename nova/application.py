@@ -133,11 +133,28 @@ Use null and low confidence for absent or illegible fields."""
         data=payload,
         headers={"x-goog-api-key": key, "Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=90) as res:
-            body = json.load(res)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Gemini request failed ({exc.code}): {exc.read().decode()[:300]}") from exc
+    body = None
+    last_exc = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=90) as res:
+                body = json.load(res)
+            break
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"Gemini request failed ({exc.code}): {exc.read().decode()[:300]}") from exc
+        except OSError as exc:
+            last_exc = exc
+            # WinError 10013: Windows picked a local ephemeral port that WSL/Hyper-V
+            # has reserved via winnat. A retry gets a new random port and usually succeeds.
+            if getattr(exc, "winerror", None) == 10013 and attempt < 2:
+                continue
+            raise RuntimeError(
+                "Gemini could not be reached. Check your internet connection or firewall, then retry."
+            ) from exc
+    if body is None:
+        raise RuntimeError(
+            "Gemini could not be reached. Check your internet connection or firewall, then retry."
+        ) from last_exc
     text = body.get("output_text")
     if not text:
         for step in reversed(body.get("steps", [])):
@@ -380,6 +397,20 @@ def query(question: str) -> dict:
             rows = db.execute("SELECT extracted_json FROM runs WHERE status='completed'").fetchall()
             scores = [f["confidence"] for row in rows for f in json.loads(row["extracted_json"])["fields"].values()]
             answer = f"Average extraction confidence is {sum(scores)/len(scores):.1%} across {len(scores)} fields." if scores else "No completed runs yet."
+        elif "amendment" in q:
+            rows = db.execute(
+                "SELECT id, created_at, filename, decision_json FROM runs "
+                "WHERE status='completed' ORDER BY created_at DESC"
+            ).fetchall()
+            items = [
+                dict(row) for row in rows
+                if json.loads(row["decision_json"])["outcome"] == "amendment_request"
+            ]
+            filenames = ", ".join(item["filename"] for item in items[:10])
+            answer = (
+                f"{len(items)} shipment(s) require an amendment"
+                + (f": {filenames}." if filenames else ".")
+            )
         elif "pending" in q or "human review" in q:
             rows = db.execute("SELECT id, created_at, filename, decision_json FROM runs WHERE status='completed' ORDER BY created_at DESC").fetchall()
             items = [dict(r) for r in rows if json.loads(r["decision_json"])["outcome"] == "human_review"]
@@ -401,6 +432,12 @@ def query(question: str) -> dict:
 
 
 class Handler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def translate_path(self, path):
         clean = path.split("?", 1)[0].lstrip("/") or "index.html"
         return str(WEB_DIR / clean)

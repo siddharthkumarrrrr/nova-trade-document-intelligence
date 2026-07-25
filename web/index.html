@@ -3,7 +3,16 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Nova | Trade Document Intelligence</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=20260725-2">
+  <style>
+    .run{grid-template-columns:1.2fr .8fr .6fr auto;align-items:center}
+    .run-action{white-space:nowrap;padding:8px 12px}
+    .run-action:disabled{cursor:not-allowed;opacity:.55}
+    .loaded-notice{margin:0 0 12px;padding:10px 14px;border:1px solid #a9dfd2;border-radius:9px;background:#e9f8f4;color:#12684f;font-weight:700}
+    .dismissible{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .close-button{flex:0 0 auto;width:32px;height:32px;padding:0;border-radius:50%;background:transparent;color:inherit;font-size:22px;line-height:1}
+    .close-button:hover{background:rgba(0,0,0,.07)}
+  </style>
 </head>
 <body>
   <header><div><span class="eyebrow">GOCOMET · NOVA</span><h1>Trade Document Intelligence</h1></div><div class="pill"><i></i> System ready</div></header>
@@ -21,11 +30,12 @@
     <section id="progress" class="steps hidden"><div class="active">1<span>Extract</span></div><div>2<span>Validate</span></div><div>3<span>Route</span></div><div>4<span>Store</span></div></section>
     <section id="error" class="error hidden"></section>
     <section id="result" class="hidden">
-      <div class="summary card"><div><span class="eyebrow">FINAL DECISION</span><h3 id="outcome"></h3><p id="reasoning"></p></div><div id="counts"></div></div>
+      <div id="loadedNotice" class="loaded-notice hidden"></div>
+      <div class="summary card"><div><span class="eyebrow">FINAL DECISION</span><h3 id="outcome"></h3><p id="reasoning"></p></div><div id="counts"></div><button type="button" id="closeResult" class="close-button" aria-label="Close result">×</button></div>
       <div class="grid"><div class="card"><div class="cardhead"><h3>Field verification</h3><span id="customer"></span></div><div id="fields"></div></div><div class="card side"><h3>Agent trace</h3><div id="trace"></div><div id="draftWrap" class="hidden"><h3>Amendment draft</h3><textarea id="draft"></textarea><p class="guard">Human review required · Agent never sends</p></div></div></div>
     </section>
     <section class="query card"><div><span class="eyebrow">GROUNDED QUERY</span><h3>Ask your verified shipment data</h3></div><form id="queryForm"><input id="question" value="How many shipments were flagged this week?"><button>Ask</button></form><p id="answer" class="answer">Answers use read-only SQLite queries—never model memory.</p></section>
     <section class="history"><div class="cardhead"><h3>Recent runs</h3><button class="ghost" id="refresh">Refresh</button></div><div id="runs"></div></section>
   </main>
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20260725-2"></script>
 </body></html>
