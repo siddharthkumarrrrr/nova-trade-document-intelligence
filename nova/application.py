@@ -22,8 +22,6 @@ from dotenv import load_dotenv
 from nova.domain import (
     EXTRACTION_SCHEMA,
     FIELDS,
-    ROUTER_AGENT_SCHEMA,
-    VALIDATION_AGENT_SCHEMA,
     ExtractionResult,
 )
 from nova.settings import SETTINGS
@@ -109,68 +107,10 @@ def demo_extract(filename: str) -> dict:
     }
 
 
-def groq_extract(filename: str, content: bytes, content_type: str) -> dict:
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
-        raise RuntimeError("GROQ_API_KEY is not set. Select Demo mode or provide a fresh Groq key.")
-    model = os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
-    images = []
-    if content_type == "application/pdf":
-        try:
-            import pypdfium2 as pdfium
-        except ImportError as exc:
-            raise RuntimeError("PDF processing requires pypdfium2. Run: pip install pypdfium2 Pillow") from exc
-        document = pdfium.PdfDocument(content)
-        if len(document) > 5:
-            raise ValueError("Groq vision mode supports a maximum of 5 rendered PDF pages per run.")
-        from io import BytesIO
-        for page in document:
-            rendered = page.render(scale=1.5).to_pil()
-            buffer = BytesIO()
-            rendered.convert("RGB").save(buffer, format="JPEG", quality=88)
-            encoded = base64.b64encode(buffer.getvalue()).decode()
-            images.append({"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded}", "detail": "high"})
-    else:
-        encoded = base64.b64encode(content).decode()
-        images.append({"type": "input_image", "image_url": f"data:{content_type};base64,{encoded}", "detail": "high"})
-    prompt = """You are an evidence-bound trade-document extractor. Return JSON only.
-Extract exactly these fields: consignee_name, hs_code, port_of_loading,
-port_of_discharge, incoterms, description_of_goods, gross_weight, invoice_number.
-For each return value (string or null), confidence (0..1), evidence (a short
-verbatim snippet visible in the document), and page (integer or null). Never infer
-missing text. Use null and low confidence when absent or illegible. Also return
-document_type and warnings. Schema:
-{"document_type":"...", "fields":{"consignee_name":{"value":null,
-"confidence":0,"evidence":"","page":null}}, "warnings":[]}"""
-    payload = json.dumps({
-        "model": model,
-        "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}, *images]}],
-        "text": {"format": {"type": "json_object"}},
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/responses", data=payload,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "Groq-Beta": "inference-metrics"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=90) as res:
-            body = json.load(res)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Model request failed ({exc.code}): {exc.read().decode()[:300]}") from exc
-    text = body.get("output_text")
-    if not text:
-        for item in body.get("output", []):
-            for part in item.get("content", []):
-                if part.get("type") == "output_text":
-                    text = part.get("text")
-    result = json.loads(text)
-    validate_extraction_shape(result)
-    return result
-
-
 def gemini_extract(filename: str, content: bytes, content_type: str) -> dict:
     key = os.getenv("GEMINI_API_KEY")
     if not key:
-        raise RuntimeError("GEMINI_API_KEY is not set. Select Demo/Groq mode or provide a Google AI Studio key.")
+        raise RuntimeError("GEMINI_API_KEY is not set. Select Demo mode or provide a Google AI Studio key.")
     model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     prompt = """Extract the required trade-document fields. Never infer missing
 text. Every non-null value must have a short verbatim evidence snippet and page.
@@ -214,88 +154,11 @@ Use null and low confidence for absent or illegible fields."""
     return result
 
 
-def gemini_structured_agent(prompt: str, schema: dict) -> dict:
-    key = os.getenv("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is required for real Gemini agents.")
-    payload = json.dumps({
-        "model": os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
-        "input": [{"type": "text", "text": prompt}],
-        "response_format": {
-            "type": "text",
-            "mime_type": "application/json",
-            "schema": schema,
-        },
-    }).encode()
-    req = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/interactions",
-        data=payload,
-        headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as res:
-            body = json.load(res)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Gemini agent failed ({exc.code}): {exc.read().decode()[:300]}") from exc
-    text = body.get("output_text")
-    if not text:
-        for step in reversed(body.get("steps", [])):
-            for part in step.get("content", []):
-                if part.get("text"):
-                    text = part["text"]
-                    break
-            if text:
-                break
-    if not text:
-        raise RuntimeError("Gemini agent returned no structured output.")
-    return json.loads(text)
-
-
-def groq_structured_agent(prompt: str, schema: dict) -> dict:
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
-        raise RuntimeError("GROQ_API_KEY is required for real Groq agents.")
-    payload = json.dumps({
-        "model": os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b"),
-        "input": prompt + "\nReturn JSON only. Required JSON Schema:\n" + json.dumps(schema),
-        "text": {"format": {"type": "json_object"}},
-    }).encode()
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/responses",
-        data=payload,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as res:
-            body = json.load(res)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Groq agent failed ({exc.code}): {exc.read().decode()[:300]}") from exc
-    text = body.get("output_text")
-    if not text:
-        for item in body.get("output", []):
-            for part in item.get("content", []):
-                if part.get("type") == "output_text":
-                    text = part.get("text")
-    if not text:
-        raise RuntimeError("Groq agent returned no structured output.")
-    return json.loads(text)
-
-
-def call_structured_agent(mode: str, prompt: str, schema: dict) -> dict:
-    if mode == "gemini":
-        return gemini_structured_agent(prompt, schema)
-    if mode == "groq":
-        return groq_structured_agent(prompt, schema)
-    raise ValueError(f"Mode {mode} does not use a live LLM agent.")
-
-
 def extract_document(filename: str, content: bytes, content_type: str, mode: str) -> dict:
     if mode == "demo":
         return demo_extract(filename)
     if mode == "gemini":
         return gemini_extract(filename, content, content_type)
-    if mode == "groq":
-        return groq_extract(filename, content, content_type)
     raise ValueError(f"Unsupported extraction mode: {mode}")
 
 
@@ -367,140 +230,32 @@ def route(validation: dict) -> dict:
 
 
 def validator_agent(extracted: dict, rules: dict, mode: str) -> dict:
-    deterministic = validate(extracted, rules)
-    if mode == "demo":
-        return {
-            **deterministic,
-            "agent": {"provider": "demo", "guard_disagreements": 0},
-        }
-    # Exact matches, missing evidence, and low-confidence fields are already
-    # decided safely by local rules. Spend tokens only where a textual mismatch
-    # may actually be an alias, abbreviation, or equivalent description.
-    semantic_fields = {
-        "consignee_name", "port_of_loading", "port_of_discharge",
-        "description_of_goods",
-    }
-    ambiguous = [
-        item for item in deterministic["results"]
-        if item["status"] == "mismatch" and item["field"] in semantic_fields
-    ]
-    if not ambiguous:
-        return {
-            **deterministic,
-            "agent": {
-                "provider": "deterministic",
-                "llm_called": False,
-                "guard_disagreements": 0,
-                "reason": "No semantic ambiguity required an LLM judgment.",
-            },
-        }
-    prompt = """You are the Validator Agent for trade documents. Compare every
-extracted field with the customer rules. Consider harmless formatting,
-abbreviations, ports, and unit equivalence, but never invent a value. Missing or
-low-confidence evidence must be uncertain. Return exactly one result for each
-required field using the supplied schema.
-
-EXTRACTION:
-""" + json.dumps(extracted) + "\nCUSTOMER RULES:\n" + json.dumps(rules)
-    proposal = call_structured_agent(mode, prompt, VALIDATION_AGENT_SCHEMA)
-    proposed_by_field = {item["field"]: item for item in proposal.get("results", [])}
-    guarded_results, disagreements = [], 0
-    for baseline in deterministic["results"]:
-        proposed = proposed_by_field.get(baseline["field"])
-        if not proposed:
-            raise ValueError(f"Validator Agent omitted {baseline['field']}")
-        proposed_status = proposed.get("status")
-        guarded_status = baseline["status"]
-        reason = proposed.get("reason", baseline["reason"])
-        if baseline["status"] == "uncertain":
-            guarded_status = "uncertain"
-            if proposed_status != "uncertain":
-                disagreements += 1
-                reason = "Guard blocked the model from overriding missing or low-confidence evidence."
-        elif proposed_status != baseline["status"]:
-            disagreements += 1
-            guarded_status = "uncertain"
-            reason = (
-                f"Rule engine returned {baseline['status']} while the Validator Agent "
-                f"returned {proposed_status}; disagreement requires human review."
-            )
-        guarded_results.append({
-            **baseline,
-            "status": guarded_status,
-            "validation_confidence": min(
-                float(proposed.get("confidence", 0)),
-                float(baseline["confidence"]),
-            ),
-            "reason": reason,
-            "deterministic_status": baseline["status"],
-            "agent_status": proposed_status,
-        })
-    summary = {"match": 0, "mismatch": 0, "uncertain": 0}
-    for item in guarded_results:
-        summary[item["status"]] += 1
+    validation = validate(extracted, rules)
     return {
-        "customer": rules["customer"],
-        "results": guarded_results,
-        "summary": summary,
+        **validation,
         "agent": {
-            "provider": mode,
-            "llm_called": True,
-            "guard_disagreements": disagreements,
-            "semantic_fields_reviewed": [item["field"] for item in ambiguous],
+            "provider": "deterministic_python",
+            "llm_called": False,
+            "reason": (
+                "Compared typed extraction against the versioned customer rule "
+                "set using requiredness, normalization, and confidence thresholds."
+            ),
         },
     }
 
 
 def router_agent(validation: dict, mode: str) -> dict:
-    guarded_policy = route(validation)
-    if mode == "demo":
-        return {
-            **guarded_policy,
-            "agent": {"provider": "demo", "proposed_outcome": guarded_policy["outcome"], "guard_applied": False},
-        }
-    # A clean document has no prose to generate and the deterministic policy is
-    # authoritative, so an LLM call would add cost without changing the result.
-    if guarded_policy["outcome"] == "auto_approve":
-        return {
-            **guarded_policy,
-            "agent": {
-                "provider": "deterministic",
-                "llm_called": False,
-                "proposed_outcome": guarded_policy["outcome"],
-                "guard_applied": False,
-                "reason": "Clean auto-approval does not require generated text.",
-            },
-        }
-    prompt = """You are the Router / Decision Agent. Read the complete guarded
-validation result and propose exactly one outcome: auto_approve, human_review,
-or amendment_request. Explain the operational reason. If amendments are needed,
-write one concise editable supplier email listing every discrepancy. Never claim
-that an email was sent. Return JSON matching the supplied schema.
-
-VALIDATION:
-""" + json.dumps(validation)
-    proposal = call_structured_agent(mode, prompt, ROUTER_AGENT_SCHEMA)
-    proposed_outcome = proposal.get("outcome")
-    final_outcome = guarded_policy["outcome"]
-    guard_applied = proposed_outcome != final_outcome
-    if guard_applied:
-        reasoning = (
-            f"Decision guard overrode model proposal '{proposed_outcome}'. "
-            + guarded_policy["reasoning"]
-        )
-        draft = guarded_policy["draft_amendment"]
-    else:
-        reasoning = proposal.get("reasoning") or guarded_policy["reasoning"]
-        draft = proposal.get("draft_amendment") or guarded_policy["draft_amendment"]
+    decision = route(validation)
     return {
-        "outcome": final_outcome,
-        "reasoning": reasoning,
-        "draft_amendment": draft,
+        **decision,
         "agent": {
-            "provider": mode,
-            "llm_called": True,
-            "proposed_outcome": proposed_outcome,
-            "guard_applied": guard_applied,
+            "provider": "deterministic_python",
+            "llm_called": False,
+            "policy": "mismatch > uncertain > all-match",
+            "reason": (
+                "Selected one bounded outcome and generated the explanation/draft "
+                "from the field-level validation results."
+            ),
         },
     }
 

@@ -8,8 +8,8 @@ and answers grounded natural-language questions over stored runs.
 ## What is included
 
 - Extractor Agent: PDF/image to typed fields, confidence, and source evidence
-- Validator Agent: deterministic rules first; LLM semantic review only for ambiguous text
-- Router Agent: deterministic decision policy; LLM drafting only for exceptions
+- Validator Agent: deterministic customer-rule comparison
+- Router Agent: deterministic bounded decision policy and amendment template
 - SQLite audit trail and safe natural-language query templates
 - Browser UI showing real pipeline state and agent reasoning
 - Clean and messy sample trade documents
@@ -31,10 +31,6 @@ Add your provider key to `.env`:
 ```dotenv
 GEMINI_API_KEY=your-google-ai-studio-key
 GEMINI_MODEL=gemini-3.6-flash
-
-# Optional fallback provider
-GROQ_API_KEY=
-GROQ_MODEL=qwen/qwen3.6-27b
 ```
 
 Start the app:
@@ -44,23 +40,21 @@ python app.py
 ```
 
 Open `http://127.0.0.1:8000`. Demo mode works without any API key; select
-Gemini or Groq in the UI for real model calls. Never commit `.env`.
+Gemini in the UI for real extraction. Never commit `.env`.
 
-Gemini is the preferred free-tier path because it accepts PDFs natively and
+Gemini is used for extraction because it accepts PDFs and images natively and
 supports JSON Schema output. The default is `gemini-3.6-flash`; override it with
-`GEMINI_MODEL`. Groq remains available as a fallback using
-`qwen/qwen3.6-27b` and `GROQ_MODEL`; PDFs are rendered to at most five images
-for that provider.
+`GEMINI_MODEL`.
 
 LangGraph orchestrates three responsibility boundaries - Extractor, Validator,
 and Router - with a SQLite
 checkpointer. Each run uses its run ID as the LangGraph thread ID, so completed
 nodes survive a process restart and can be inspected or replayed.
 
-The cost-optimized path makes one model call for a clean document: vision
-extraction. The Validator uses an LLM only when a textual mismatch may be an
-alias or equivalent description. The Router uses an LLM only when it must explain
-an exception or draft an amendment; deterministic policy always owns the outcome.
+Every real document makes one LLM call: Gemini vision extraction. The Validator
+compares the typed extraction with customer rules in deterministic Python. The
+Router deterministically selects one of the three allowed outcomes and generates
+its explanation/amendment template from the field-level result.
 
 ## Suggested 2-3 minute demo
 
@@ -109,7 +103,8 @@ no business behavior.
 Each handoff is typed JSON. LangGraph writes a SQLite checkpoint after every
 node, so a run can resume from its last successful step. Real extraction is
 bounded to two attempts. Python independently enforces confidence, validation,
-and routing policy; model disagreement becomes `uncertain`, never approval.
+and routing policy. An uncertain or mismatched required field can never be
+auto-approved.
 
 ## Submission checklist
 
