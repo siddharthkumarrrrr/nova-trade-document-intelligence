@@ -1,0 +1,7 @@
+pypdfium2>=4.30
+Pillow>=10.0
+reportlab>=4.0
+pydantic>=2.7
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.0
+python-dotenv>=1.0

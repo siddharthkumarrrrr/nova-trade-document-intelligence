@@ -1,0 +1,14 @@
+{
+  "customer": "Acme Retail India",
+  "default_min_confidence": 0.85,
+  "fields": {
+    "consignee_name": {"required": true, "expected": "Acme Retail India Pvt Ltd", "min_confidence": 0.90},
+    "hs_code": {"required": true, "expected": "847130", "min_confidence": 0.90},
+    "port_of_loading": {"required": true, "expected": "Shanghai, China", "min_confidence": 0.85},
+    "port_of_discharge": {"required": true, "expected": "Nhava Sheva, India", "min_confidence": 0.90},
+    "incoterms": {"required": true, "expected": "CIF", "min_confidence": 0.90},
+    "description_of_goods": {"required": true, "expected": null, "min_confidence": 0.80},
+    "gross_weight": {"required": true, "expected": "1,250 KG", "min_confidence": 0.85},
+    "invoice_number": {"required": true, "expected": null, "min_confidence": 0.90}
+  }
+}

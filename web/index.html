@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Nova | Trade Document Intelligence</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header><div><span class="eyebrow">GOCOMET · NOVA</span><h1>Trade Document Intelligence</h1></div><div class="pill"><i></i> System ready</div></header>
+  <main>
+    <section class="hero">
+      <div><span class="eyebrow">SYSTEM OF OUTCOMES</span><h2>From document to decision,<br>with evidence at every step.</h2><p>Extract, validate, route, and store trade documents—while surfacing every uncertainty for a human.</p></div>
+      <div class="upload card">
+        <form id="uploadForm">
+          <label class="drop" for="document"><b>Drop a trade document here</b><span>PDF, PNG, JPEG, or WebP · max 20 MB</span><input id="document" name="document" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" required></label>
+          <div class="formrow"><label>Run mode <select id="mode" name="mode"><option value="demo">Demo (presentation-safe)</option><option value="gemini">Gemini vision · native PDF</option><option value="groq">Groq vision · fallback</option></select></label><button>Run pipeline <span>→</span></button></div>
+          <p id="filename" class="muted">Try clean-commercial-invoice.pdf or messy-commercial-invoice.pdf</p>
+        </form>
+      </div>
+    </section>
+    <section id="progress" class="steps hidden"><div class="active">1<span>Extract</span></div><div>2<span>Validate</span></div><div>3<span>Route</span></div><div>4<span>Store</span></div></section>
+    <section id="error" class="error hidden"></section>
+    <section id="result" class="hidden">
+      <div class="summary card"><div><span class="eyebrow">FINAL DECISION</span><h3 id="outcome"></h3><p id="reasoning"></p></div><div id="counts"></div></div>
+      <div class="grid"><div class="card"><div class="cardhead"><h3>Field verification</h3><span id="customer"></span></div><div id="fields"></div></div><div class="card side"><h3>Agent trace</h3><div id="trace"></div><div id="draftWrap" class="hidden"><h3>Amendment draft</h3><textarea id="draft"></textarea><p class="guard">Human review required · Agent never sends</p></div></div></div>
+    </section>
+    <section class="query card"><div><span class="eyebrow">GROUNDED QUERY</span><h3>Ask your verified shipment data</h3></div><form id="queryForm"><input id="question" value="How many shipments were flagged this week?"><button>Ask</button></form><p id="answer" class="answer">Answers use read-only SQLite queries—never model memory.</p></section>
+    <section class="history"><div class="cardhead"><h3>Recent runs</h3><button class="ghost" id="refresh">Refresh</button></div><div id="runs"></div></section>
+  </main>
+  <script src="/app.js"></script>
+</body></html>
